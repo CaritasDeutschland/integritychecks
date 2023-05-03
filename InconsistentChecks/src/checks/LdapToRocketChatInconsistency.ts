@@ -23,7 +23,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
 
     getError(): string {
         const usersNotFound = this.results.filter(result => result.error.type === ERROR_NOT_FOUND).length;
-        const usersMultipleFound = this.results.filter(result => result.error.type === ERROR_NOT_FOUND).length;
+        const usersMultipleFound = this.results.filter(result => result.error.type === ERROR_MULTIPLE_FOUND).length;
 
         return `Inconsistency between Keycloak and Rocket.chat found. Missing users: ${usersNotFound}. Non unique users: ${usersMultipleFound}`;
     }

@@ -242,7 +242,7 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
                                 },
                                 {
                                     "name": "End",
-                                    "value": (new Date).toLocaleString()
+                                    "value": (new Date()).toLocaleString()
                                 },
                                 opensearchClient ? {
                                     "name": "CorrelationId OpenSearch",
