@@ -3,13 +3,18 @@ ARG FIXTURE_NAME=InconsistentChecks
 
 WORKDIR /app
 COPY ./$FIXTURE_NAME /app
-RUN npm install
-RUN npm run build
+ENV NODE_ENV=development
+RUN yarn install
+RUN yarn run build
 
 # Nginx
 FROM node:18
 WORKDIR /app
-COPY --from=build-deps /package.json /app/package.json
-COPY --from=build-deps /yarn.lock /app/yarn.lock
-COPY --from=build-deps /app/dist /app/dist
-CMD ["npm", "run", "start"]
+COPY --from=build-deps /app/package.json ./package.json
+COPY --from=build-deps /app/yarn.lock ./yarn.lock
+
+ENV NODE_ENV=production
+RUN yarn install
+
+COPY --from=build-deps /app/dist ./dist
+CMD ["yarn", "run", "start"]

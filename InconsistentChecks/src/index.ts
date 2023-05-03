@@ -23,9 +23,10 @@ export let logResultFileHandle: FileHandle | null;
 
 export const log = {
     inProcess: false,
+    silent: false,
     verbosity: config.verbosity,
     info: async (...message: any[]) => {
-        if (!log.inProcess && log.verbosity >= 2) {
+        if (!log.inProcess && log.verbosity >= 2 && !log.silent) {
             process.stdout.write(`[INFO] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
         }
         if (logReportFileHandle) {
@@ -33,7 +34,7 @@ export const log = {
         }
     },
     error: async (...message: any[]) => {
-        if (!log.inProcess && log.verbosity >= 1) {
+        if (!log.inProcess && log.verbosity >= 0 && !log.silent) {
             process.stdout.write(`[ERROR] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
         }
         if (logReportFileHandle) {
@@ -41,7 +42,7 @@ export const log = {
         }
     },
     debug: async (...message: any[]) => {
-        if (!log.inProcess && log.verbosity >= 3) {
+        if (!log.inProcess && log.verbosity >= 3 && !log.silent) {
             process.stdout.write(`[DEBUG] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
         }
         if (logReportFileHandle) {
@@ -49,13 +50,13 @@ export const log = {
         }
     },
     process: (...message: any[]) => {
-        if (log.verbosity == 1) {
+        if (log.verbosity == 1 && !log.silent) {
             process.stdout.write(`[PROCESS] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\r`);
             log.inProcess = true;
         }
     },
     finish: () => {
-        if (log.verbosity == 1) {
+        if (log.verbosity == 1 && !log.silent) {
             process.stdout.write(`\n`);
             log.inProcess = false;
         }
@@ -168,7 +169,6 @@ const bootup = async () => {
             },
         };
 
-        console.log(`${config.opensearch.protocol}://${config.opensearch.username}:${config.opensearch.password}@${config.opensearch.host}:${config.opensearch.port}`);
         opensearchClient = new Client({
             node: `${config.opensearch.protocol}://${config.opensearch.username}:${config.opensearch.password}@${config.opensearch.host}:${config.opensearch.port}`,
             ssl: {
@@ -238,11 +238,11 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
                             "facts": [
                                 {
                                     "name": "Started",
-                                    "value": start.toLocaleDateString()
+                                    "value": start.toLocaleString()
                                 },
                                 {
                                     "name": "End",
-                                    "value": (new Date).toLocaleDateString()
+                                    "value": (new Date).toLocaleString()
                                 },
                                 opensearchClient ? {
                                     "name": "CorrelationId OpenSearch",
@@ -306,7 +306,7 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
             }
 
             for(const r in check.results) {
-                await log.error(`[${check.results[r].error.type}] ${check.results[r].error.message}`);
+                await log.info(`[${check.results[r].error.type}] ${check.results[r].error.message}`);
 
                 if (logResultFileHandle) {
                     await logResultFileHandle.write([
@@ -331,22 +331,24 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
 
 (async () => {
     let force: boolean = false;
-    const forceArg = process.argv.findIndex((arg) => arg === '-f');
+    const forceArg = process.argv.findIndex((arg) => arg === '-f' || arg === '--force');
     if (forceArg >= 0) {
         force = true;
     }
 
     let limit: number | null = null;
-    const limitArg = process.argv.findIndex((arg) => arg === '-l');
+    const limitArg = process.argv.findIndex((arg) => arg === '--limit');
     if (limitArg >= 0) {
         limit = parseInt(process.argv[limitArg + 1]);
     }
 
     let skip: number | null = null;
-    const skipArg = process.argv.findIndex((arg) => arg === '-s');
+    const skipArg = process.argv.findIndex((arg) => arg === '--skip');
     if (skipArg >= 0) {
         skip = parseInt(process.argv[skipArg + 1]);
     }
+
+    log.silent = process.argv.findIndex((arg) => arg === '-s') >= 0;
 
     const verboseArg = process.argv.findIndex((arg) => arg.startsWith('-v'));
     if (verboseArg >= 0) {
@@ -354,6 +356,8 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
     }
 
     await log.info("Force: ", force);
+    await log.info("Silent: ", log.silent);
+    await log.info("Verbosity: ", log.verbosity);
     await log.info("Limit: ", limit);
     await log.info("Skip: ", skip);
 
