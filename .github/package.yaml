@@ -1,0 +1,52 @@
+name: Publish Docker image
+
+on:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  build:
+    name: Build
+    strategy:
+      matrix:
+        package: ['InconsistentChecks']
+    if: "!contains(github.event.head_commit.author, 'action@github.com')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Bump version
+        working-directory: ./${{ matrix.package }}
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          npm run release
+      - name: Push changes
+        working-directory: ./${{ matrix.package }}
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.head_ref}}
+          force: true
+          tags: true
+      - name: set env
+        run: |
+          echo FIXTURE_NAME=${{ matrix.package }} >> $GITHUB_ENV
+          cat ./${{ matrix.package }}/package.json | jq '.version' | tr -d '"' | sed -e 's/^/PACKAGE_VERSION=/' >> $GITHUB_ENV
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GH_PACKAGE_RELEASE_USER }}
+          password: ${{ secrets.GH_PACKAGE_RELEASE_TOKEN }}
+      - name: Push to GitHub Packages
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: integritychecks/${{ matrix.package }}:latest,integritychecks/${{ matrix.package }}:${{ env.PACKAGE_VERSION }}
+          build_args: FIXTURE_NAME=${{ matrix.package }}
