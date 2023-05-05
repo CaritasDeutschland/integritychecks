@@ -1,3 +1,4 @@
+import { timesLimit } from "async";
 import AbstractCheck from "./AbstractCheck.js";
 import {database, kcAdminClient, log} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
@@ -6,6 +7,7 @@ import CheckError from "../types/CheckError";
 import CheckResult from "../types/CheckResult";
 
 const CHUNK_SIZE: number = 100;
+const PARALLEL: number = 10;
 
 const ERROR_NOT_FOUND: string = 'not_found';
 class NotFoundError extends Error implements CheckError {
@@ -37,10 +39,8 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
 
         const chunks = Math.max(Math.ceil(usersCount / CHUNK_SIZE), 0);
 
-        for(let c = 0; c < chunks; c++) {
-            let count = 0;
-            log.process(`Checking users (Chunk: ${1 + c}/${chunks - 1}) User: ${(skip || 0) + c * CHUNK_SIZE}/${usersCount}`);
-
+        let count = 0;
+        await timesLimit(chunks, PARALLEL, async (c, next) => {
             const keycloakUsers = await kcAdminClient.users.find({
                 first: (skip || 0) + c * CHUNK_SIZE,
                 max: CHUNK_SIZE,
@@ -48,7 +48,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
             });
 
             for(const kc in keycloakUsers) {
-                log.process(`Checking users (Chunk: ${1 + c}/${chunks - 1}) User: ${(skip || 0) + c * CHUNK_SIZE + count++}/${usersCount}`);
+                log.process(`Checking users: ${(skip || 0) + count++}/${usersCount}`);
                 const kcUser = keycloakUsers[kc];
                 if (!kcUser) continue;
 
@@ -74,7 +74,8 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
                     }
                 });
             }
-        }
+            next();
+        });
         log.finish();
 
         return success;

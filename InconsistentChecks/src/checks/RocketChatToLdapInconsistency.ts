@@ -1,3 +1,4 @@
+import { timesLimit } from 'async';
 import AbstractCheck from "./AbstractCheck.js";
 import {database, kcAdminClient, log} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
@@ -6,6 +7,7 @@ import CheckError from "../types/CheckError";
 import CheckResult from "../types/CheckResult";
 
 const CHUNK_SIZE: number = 100;
+const PARALLEL: number = 10;
 
 const ERROR_NOT_FOUND: string = 'not_found';
 class NotFoundError extends Error implements CheckError {
@@ -38,18 +40,16 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         const rcUsersCount = Math.max(await userCollection.countDocuments(userFilter) - (skip || 0), 0);
         await log.info(`Users: ${rcUsersCount}`);
 
-        const rcChunks = Math.max(Math.ceil(rcUsersCount / CHUNK_SIZE), 0);
+        const chunks = Math.max(Math.ceil(rcUsersCount / CHUNK_SIZE), 0);
 
-        for(let c = 0; c < rcChunks; c++) {
-            let count = 0;
-            log.process(`Checking users (Chunk: ${1 + c}/${rcChunks - 1}) User: ${(skip || 0) + c * CHUNK_SIZE}/${rcUsersCount}`);
-
+        let count = 0;
+        await timesLimit(chunks, PARALLEL, async (c, next) => {
             const rcUsers = await userCollection.find(userFilter, {
                 limit: CHUNK_SIZE,
                 skip: (skip || 0) + c * CHUNK_SIZE,
             });
             while(await rcUsers.hasNext()) {
-                log.process(`Checking users (Chunk: ${1 + c}/${rcChunks - 1}) User: ${(skip || 0) + c * CHUNK_SIZE + count++}/${rcUsersCount}`);
+                log.process(`Checking users ${(skip || 0) + count++}/${rcUsersCount}`);
                 const rcUser = await rcUsers.next();
                 if (!rcUser || !rcUser.ldap) continue;
 
@@ -73,13 +73,6 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     'roles': 'owner'
                 });
 
-                //const rcSubscriptions = await subscriptionCollection.find(rcSubscriptionFilter);
-                //while(await rcSubscriptions.hasNext()) {
-                //    const rcSubscription = await rcSubscriptions.next();
-                //    if (!rcSubscription) continue;
-                //}
-                //
-
                 await log.debug(`Subscription count: ${rcSubscriptionsCount} Owner count: ${rcSubscriptionsOwnerCount}`);
                 this.results.push({
                     error,
@@ -91,7 +84,8 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     }
                 });
             }
-        }
+            next();
+        });
         log.finish();
 
         return success;
