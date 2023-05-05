@@ -49,6 +49,8 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
 
             for(const kc in keycloakUsers) {
                 log.process(`Checking users: ${(skip || 0) + count++}/${usersCount}`);
+                await log.info(`Checking users ${(skip || 0) + count++}/${usersCount}`);
+
                 const kcUser = keycloakUsers[kc];
                 if (!kcUser) continue;
 

@@ -50,6 +50,8 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
             });
             while(await rcUsers.hasNext()) {
                 log.process(`Checking users ${(skip || 0) + count++}/${rcUsersCount}`);
+                await log.info(`Checking users ${(skip || 0) + count++}/${rcUsersCount}`);
+
                 const rcUser = await rcUsers.next();
                 if (!rcUser || !rcUser.ldap) continue;
 
