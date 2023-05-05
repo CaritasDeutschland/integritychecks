@@ -324,6 +324,11 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
             log.finish();
             await log.error('Unknown error!');
             await log.error(e);
+            if (e instanceof Error) {
+                if (e.stack) {
+                    process.stdout.write(e.stack)
+                }
+            }
             break;
         }
     }
