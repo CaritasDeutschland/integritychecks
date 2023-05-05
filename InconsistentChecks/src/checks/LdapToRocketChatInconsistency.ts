@@ -40,7 +40,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
         const chunks = Math.max(Math.ceil(usersCount / CHUNK_SIZE), 0);
 
         let count = 0;
-        await timesLimit(chunks, PARALLEL, async (c, next) => {
+        await timesLimit(chunks, PARALLEL, async (c: number) => {
             const keycloakUsers = await kcAdminClient.users.find({
                 first: (skip || 0) + c * CHUNK_SIZE,
                 max: CHUNK_SIZE,
@@ -76,7 +76,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
                     }
                 });
             }
-            next();
+            return;
         });
         log.finish();
 

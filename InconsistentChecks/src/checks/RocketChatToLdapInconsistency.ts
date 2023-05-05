@@ -43,7 +43,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         const chunks = Math.max(Math.ceil(rcUsersCount / CHUNK_SIZE), 0);
 
         let count = 0;
-        await timesLimit(chunks, PARALLEL, async (c, next) => {
+        await timesLimit(chunks, PARALLEL, async (c: number) => {
             const rcUsers = await userCollection.find(userFilter, {
                 limit: CHUNK_SIZE,
                 skip: (skip || 0) + c * CHUNK_SIZE,
@@ -86,7 +86,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     }
                 });
             }
-            next();
+            return;
         });
         log.finish();
 
