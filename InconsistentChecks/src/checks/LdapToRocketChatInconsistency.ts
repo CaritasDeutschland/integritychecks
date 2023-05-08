@@ -102,8 +102,8 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
         return [
             result.error.message,
             result.error.type,
-            result.payload.rcUser._id,
-            result.payload.rcUser.username,
+            result.payload.kcUser.id,
+            result.payload.kcUser.username,
             result.payload.username,
         ];
     }
