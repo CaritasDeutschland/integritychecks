@@ -30,6 +30,35 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         return `Inconsistency between Rocket.chat and Keycloak found. Missing users: ${usersNotFound}. Non unique users: ${usersMultipleFound}`;
     }
 
+    kcUsers: {[key: string]: (string | undefined)[]} = {};
+
+    async loadKcUsers(): Promise<void> {
+        const usersCount = Math.max(await kcAdminClient.users.count({ realm: config.keycloak.realm }), 0);
+        const chunks = Math.max(Math.ceil(usersCount / 100), 0);
+
+        let count = 0;
+        await timesLimit(chunks, 2, async (c: number) => {
+            const keycloakUsers = await kcAdminClient.users.find({
+                first: c * 100,
+                max: 100,
+                realm: config.keycloak.realm
+            });
+
+            count += keycloakUsers.length;
+            log.process(`Loading keycloak users: ${count}/${usersCount}`);
+            await log.info(`Loading keycloak users ${count}/${usersCount}`);
+
+            for(const kc in keycloakUsers) {
+                const kcUser = keycloakUsers[kc];
+                if (!kcUser || !kcUser.username) continue;
+                if (!this.kcUsers[kcUser.username]) {
+                    this.kcUsers[kcUser.username] = [];
+                }
+                this.kcUsers[kcUser.username].push(kcUser.id);
+            }
+        });
+    }
+
     async run(force: boolean, limit: number | null, skip: number | null): Promise<boolean> {
         let success = true;
         const userCollection = database.collection('users');
@@ -41,6 +70,9 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         await log.info(`Users: ${rcUsersCount}`);
 
         const chunks = Math.max(Math.ceil(rcUsersCount / CHUNK_SIZE), 0);
+
+        // Preload kcUser
+        await this.loadKcUsers();
 
         let count = 0;
         await timesLimit(chunks, PARALLEL, async (c: number) => {
@@ -55,15 +87,11 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                 const rcUser = await rcUsers.next();
                 if (!rcUser || !rcUser.ldap) continue;
 
-                const keycloakUsers = await kcAdminClient.users.find({
-                    username: rcUser.username,
-                    realm: config.keycloak.realm
-                });
-                if (keycloakUsers.length === 1) continue;
+                if (this.kcUsers[rcUser.username]?.length === 1) continue;
 
                 success = false;
                 let error = new NotFoundError(`User not found in Keycloak: ${decodeUsername(rcUser.username)} / ${rcUser.username} / ${rcUser._id}`);
-                if (keycloakUsers.length > 1) {
+                if (this.kcUsers[rcUser.username]?.length > 1) {
                     error = new MultipleFoundError(`Multiple users found in Keycloak: ${decodeUsername(rcUser.username)} / ${rcUser.username} / ${rcUser._id}`);
                 }
                 await log.debug(error.message);
