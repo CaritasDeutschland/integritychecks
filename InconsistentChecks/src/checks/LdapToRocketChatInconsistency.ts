@@ -39,6 +39,11 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
 
         const chunks = Math.max(Math.ceil(usersCount / CHUNK_SIZE), 0);
 
+        /*
+        ToDo: Load all users by 100 chunks and build array with ids and then just check if userid is in array instad
+         of querying each user from keycloak
+         */
+
         let count = 0;
         await timesLimit(chunks, PARALLEL, async (c: number) => {
             const keycloakUsers = await kcAdminClient.users.find({
@@ -49,7 +54,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
 
             for(const kc in keycloakUsers) {
                 log.process(`Checking users: ${(skip || 0) + count++}/${usersCount}`);
-                await log.info(`Checking users ${(skip || 0) + count++}/${usersCount}`);
+                await log.info(`Checking users ${(skip || 0) + count}/${usersCount}`);
 
                 const kcUser = keycloakUsers[kc];
                 if (!kcUser) continue;

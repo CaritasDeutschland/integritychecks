@@ -6,11 +6,13 @@ import {FileHandle} from "fs/promises";
 import * as fs from "fs";
 import { v4 as uuidv4 } from 'uuid';
 import { Client }  from '@opensearch-project/opensearch';
+import { timesLimit } from 'async';
 
 import config from './config/config.js';
 import * as checks from './checks/index.js';
 
 let kcAdminRefreshInterval: NodeJS.Timer;
+let mysqlKeepAliveInterval: NodeJS.Timer;
 export let kcAdminClient: KcAdminClient;
 let opensearchClient: Client;
 let opensearchIndex: string;
@@ -149,6 +151,9 @@ const bootup = async () => {
 
     await log.info("Connect ...");
     await mysqlFn<void>('connect');
+    mysqlKeepAliveInterval = setInterval(async () => {
+        await mysqlFn("query", "SELECT 1;");
+    }, 5 * 60 * 1000);
     await log.info("Connected ...");
 
     /* Opensearch */
@@ -189,6 +194,7 @@ const bootup = async () => {
 const teardown = async () => {
     await log.info("Tearing down ...");
     clearInterval(kcAdminRefreshInterval);
+    clearInterval(mysqlKeepAliveInterval);
     await mysqlFn('end');
     await mongoClient.close();
     await log.info("Done!");
