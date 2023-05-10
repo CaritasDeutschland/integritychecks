@@ -8,7 +8,7 @@ import CheckResult from "../types/CheckResult";
 import rocketChatService from "../helper/rocketChatService.js";
 
 const CHUNK_SIZE: number = 100;
-const PARALLEL: number = 10;
+const PARALLEL: number = 20;
 const VERIFY_MISSING_USERS: boolean = true; // Slows down the process a little bit
 
 const ERROR_NOT_FOUND: string = 'not_found';
@@ -91,15 +91,6 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
 
                 if (this.kcUsers[rcUser.username]?.length === 1) continue;
 
-                // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
-                if (VERIFY_MISSING_USERS) {
-                    const keycloakUsers = await kcAdminClient.users.find({
-                        username: rcUser.username,
-                        realm: config.keycloak.realm
-                    });
-                    if (keycloakUsers.length === 1) continue;
-                }
-
                 success = false;
                 let error = new NotFoundError(`User not found in Keycloak: ${decodeUsername(rcUser.username)} / ${rcUser.username} / ${rcUser._id}`);
                 if (this.kcUsers[rcUser.username]?.length > 1) {
@@ -143,6 +134,16 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         for(const user of usersWithoutSubscriptions) {
             log.process(`Removing user ${++count}/${usersWithoutSubscriptions.length}`);
             await log.info(`Removing user ${count}/${usersWithoutSubscriptions.length} (${ user.payload.rcUser._id})       `);
+
+            // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
+            if (VERIFY_MISSING_USERS) {
+                const keycloakUsers = await kcAdminClient.users.find({
+                    username: user.payload.rcUser.username,
+                    realm: config.keycloak.realm
+                });
+                if (keycloakUsers.length === 1) continue;
+            }
+
             try {
                 await rocketChatService.post('users.delete', { userId: user.payload.rcUser._id });
                 this.results = this.results.filter(result => result.payload.rcUser._id !== user.payload.rcUser._id);
@@ -161,6 +162,16 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         for (const user of usersWithRooms) {
             log.process(`Removing user ${++count}/${usersWithRooms.length} (${ user.payload.rcUser._id})       `);
             await log.info(`Removing user ${count}/${usersWithRooms.length} (${ user.payload.rcUser._id})`);
+
+            // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
+            if (VERIFY_MISSING_USERS) {
+                const keycloakUsers = await kcAdminClient.users.find({
+                    username: user.payload.rcUser.username,
+                    realm: config.keycloak.realm
+                });
+                if (keycloakUsers.length === 1) continue;
+            }
+
             const rcSubscriptions = await subscriptionCollection.find({
                 'u._id': user.payload.rcUser._id,
                 'rid': { '$ne': 'GENERAL' }
