@@ -8,7 +8,7 @@ import CheckResult from "../types/CheckResult";
 import rocketChatService from "../helper/rocketChatService.js";
 
 const CHUNK_SIZE: number = 100;
-const PARALLEL: number = 20;
+const PARALLEL: number = 25;
 const VERIFY_MISSING_USERS: boolean = true; // Slows down the process a little bit
 
 const ERROR_NOT_FOUND: string = 'not_found';
@@ -125,103 +125,87 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         }
 
         // Remove users without rooms
-        const usersWithoutSubscriptions = this.results.filter(result =>
+        const usersToDelete = this.results.filter(result =>
             result.error.type === ERROR_NOT_FOUND
-            && result.payload.subscriptionsCount === 0
         );
-        await log.info(`Removing ${usersWithoutSubscriptions.length} users without subscriptions`);
-        count = 0;
-        for(const user of usersWithoutSubscriptions) {
-            log.process(`Removing user ${++count}/${usersWithoutSubscriptions.length}`);
-            await log.info(`Removing user ${count}/${usersWithoutSubscriptions.length} (${ user.payload.rcUser._id})       `);
 
-            // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
-            if (VERIFY_MISSING_USERS) {
-                const keycloakUsers = await kcAdminClient.users.find({
-                    username: user.payload.rcUser.username,
-                    realm: config.keycloak.realm
-                });
-                if (keycloakUsers.length === 1) continue;
-            }
+        await log.info(`Removing ${usersToDelete.length} users without subscriptions`);
+        //const usersToDeleteIds = usersToDelete.map((user) => user.payload.rcUser._id);
+        //ToDo: Delete rooms where multiple users but others need to be removed too
+        //ToDo: Delete rooms where myself is the only owner???
+
+        count = 0;
+        for(const user of usersToDelete) {
+            log.process(`Removing user ${++count}/${usersToDelete.length}`);
+            await log.info(`Removing user ${count}/${usersToDelete.length} (${ user.payload.rcUser._id})       `);
 
             try {
-                await rocketChatService.post('users.delete', { userId: user.payload.rcUser._id });
-                this.results = this.results.filter(result => result.payload.rcUser._id !== user.payload.rcUser._id);
-            } catch (e) {
-                await log.error(`Error deleting user: ${user.payload.rcUser._id}`, e);
-            }
-        }
+                if (user.payload.subscriptionsCount > 0) {
+                    const rcSubscriptions = await subscriptionCollection.find({
+                        'u._id': user.payload.rcUser._id,
+                        'rid': { '$ne': 'GENERAL' }
+                    });
 
-        // Remove users with subscriptions to rooms with only one participant
-        const usersWithRooms = this.results.filter(result =>
-            result.error.type === ERROR_NOT_FOUND
-            && result.payload.subscriptionsCount >= 1
-        );
-        await log.info(`Removing ${usersWithRooms.length} users with room`);
-        count = 0;
-        for (const user of usersWithRooms) {
-            log.process(`Removing user ${++count}/${usersWithRooms.length} (${ user.payload.rcUser._id})       `);
-            await log.info(`Removing user ${count}/${usersWithRooms.length} (${ user.payload.rcUser._id})`);
-
-            // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
-            if (VERIFY_MISSING_USERS) {
-                const keycloakUsers = await kcAdminClient.users.find({
-                    username: user.payload.rcUser.username,
-                    realm: config.keycloak.realm
-                });
-                if (keycloakUsers.length === 1) continue;
-            }
-
-            const rcSubscriptions = await subscriptionCollection.find({
-                'u._id': user.payload.rcUser._id,
-                'rid': { '$ne': 'GENERAL' }
-            });
-
-            // Check if all subscriptions have no other members in room
-            if (!await every(rcSubscriptions.clone(), async (subscription) =>
-                await subscriptionCollection.countDocuments({
-                    'rid': subscription.rid,
-                    'u._id': { '$ne': rocketChatService.currentLogin?.userId },
-                    'u.username': { '$ne': 'System' },
-                }) === 1
-            )) {
-                log.finish();
-                await log.error(`User has subscriptions with multiple users in room! Skipping...`);
-                continue;
-            }
-
-            // Check if room does not exists in mariadb anymore
-            if (!await every(rcSubscriptions.clone(), async (subscription) => {
-                const sessionCount = await mysqlFn<any>(
-                    'query',
-                    `SELECT count(*) as count FROM session WHERE rc_group_id = "${subscription.rid}" or rc_feedback_group_id = "${subscription.rid}"`
-                );
-                const chatCount = await mysqlFn<any>(
-                    'query',
-                    `SELECT count(*) as count FROM chat WHERE rc_group_id = "${subscription.rid}"`
-                );
-                return (sessionCount[0].count + chatCount[0].count) <= 0;
-            })) {
-                log.finish();
-                await log.error(`Some user subscription rooms are still in DB! Skipping...`);
-                continue;
-            }
-
-            try {
-                while(await rcSubscriptions.hasNext()) {
-                    const rcSubscription = await rcSubscriptions.next();
-                    if (!rcSubscription) continue;
-                    try {
-                        // Add technical user to room
-                        await rocketChatService.post('groups.invite', {
-                            userId: rocketChatService.currentLogin?.userId,
-                            roomId: rcSubscription.rid
-                        });
-                        await rocketChatService.post('groups.delete', { roomId: rcSubscription.rid });
-                    } catch (e) {
+                    // Check if all subscriptions have no other members in room
+                    if (!await every(rcSubscriptions.clone(), async (subscription) =>
+                        await subscriptionCollection.countDocuments({
+                            'rid': subscription.rid,
+                            /*
+                            'u._id': { '$nin': [
+                                    ...usersToDeleteIds,
+                                    rocketChatService.currentLogin?.userId
+                            ] },
+                             */
+                            'u._id': { '$ne': rocketChatService.currentLogin?.userId },
+                            'u.username': { '$ne': 'System' },
+                        }) === 1
+                    )) {
                         log.finish();
-                        await log.error(`Error deleting user subscription: ${rcSubscription._id}`, e);
-                        throw e;
+                        await log.error(`User has subscriptions with multiple users in room! Skipping...`);
+                        continue;
+                    }
+
+                    // Check if room does not exists in mariadb anymore
+                    if (!await every(rcSubscriptions.clone(), async (subscription) => {
+                        const sessionCount = await mysqlFn<any>(
+                            'query',
+                            `SELECT count(*) as count FROM session WHERE rc_group_id = "${subscription.rid}" or rc_feedback_group_id = "${subscription.rid}"`
+                        );
+                        const chatCount = await mysqlFn<any>(
+                            'query',
+                            `SELECT count(*) as count FROM chat WHERE rc_group_id = "${subscription.rid}"`
+                        );
+                        return (sessionCount[0].count + chatCount[0].count) <= 0;
+                    })) {
+                        log.finish();
+                        await log.error(`Some user subscription rooms are still in DB! Skipping...`);
+                        continue;
+                    }
+
+                    // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
+                    if (VERIFY_MISSING_USERS) {
+                        const keycloakUsers = await kcAdminClient.users.find({
+                            username: user.payload.rcUser.username,
+                            realm: config.keycloak.realm
+                        });
+                        if (keycloakUsers.length === 1) continue;
+                    }
+
+                    while(await rcSubscriptions.hasNext()) {
+                        const rcSubscription = await rcSubscriptions.next();
+                        if (!rcSubscription) continue;
+                        try {
+                            // Add technical user to room
+                            await rocketChatService.post('groups.invite', {
+                                userId: rocketChatService.currentLogin?.userId,
+                                roomId: rcSubscription.rid
+                            });
+                            await rocketChatService.post('groups.delete', { roomId: rcSubscription.rid });
+                        } catch (e) {
+                            log.finish();
+                            await log.error(`Error deleting user subscription: ${rcSubscription._id}`, e);
+                            throw e;
+                        }
                     }
                 }
 
