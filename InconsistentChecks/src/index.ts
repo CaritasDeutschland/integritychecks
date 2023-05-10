@@ -108,6 +108,14 @@ const bootup = async () => {
         await log.error("No URI set in config");
         process.exit(1);
     }
+    if (!config.rocketChat.username) {
+        await log.error("No ROCKETCHAT_USER set in config");
+        process.exit(1);
+    }
+    if (!config.rocketChat.password) {
+        await log.error("No ROCKETCHAT_PASSWORD set in config");
+        process.exit(1);
+    }
 
     await log.info("Started");
 
