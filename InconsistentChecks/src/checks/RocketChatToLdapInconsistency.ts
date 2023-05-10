@@ -1,11 +1,12 @@
 import { timesLimit, every } from 'async';
 import AbstractCheck from "./AbstractCheck.js";
-import {database, kcAdminClient, log, mysqlConn, mysqlFn} from "../index.js";
+import {database, kcAdminClient, mysqlFn} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
 import config from "../config/config.js";
 import CheckError from "../types/CheckError";
 import CheckResult from "../types/CheckResult";
 import rocketChatService from "../helper/rocketChatService.js";
+import logger from "../helper/logger.js";
 
 const CHUNK_SIZE: number = 100;
 const PARALLEL: number = 25;
@@ -47,8 +48,8 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
             });
 
             count += keycloakUsers.length;
-            log.process(`Loading keycloak users: ${count}/${usersCount}`);
-            await log.info(`Loading keycloak users ${count}/${usersCount}`);
+            logger.process(`Loading keycloak users: ${count}/${usersCount}`);
+            await logger.info(`Loading keycloak users ${count}/${usersCount}`);
 
             for(const kc in keycloakUsers) {
                 const kcUser = keycloakUsers[kc];
@@ -66,10 +67,10 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         const userCollection = database.collection('users');
         const subscriptionCollection = database.collection('rocketchat_subscription');
 
-        await log.info("Load users ...");
+        await logger.info("Load users ...");
         const userFilter = {};
         const rcUsersCount = Math.max(await userCollection.countDocuments(userFilter) - (skip || 0), 0);
-        await log.info(`Users: ${rcUsersCount}`);
+        await logger.info(`Users: ${rcUsersCount}`);
 
         const chunks = Math.max(Math.ceil(rcUsersCount / CHUNK_SIZE), 0);
 
@@ -83,8 +84,8 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                 skip: (skip || 0) + c * CHUNK_SIZE,
             });
             while(await rcUsers.hasNext()) {
-                log.process(`Checking users ${(skip || 0) + ++count}/${rcUsersCount}`);
-                await log.info(`Checking users ${(skip || 0) + count}/${rcUsersCount}`);
+                logger.process(`Checking users ${(skip || 0) + ++count}/${rcUsersCount}`);
+                await logger.info(`Checking users ${(skip || 0) + count}/${rcUsersCount}`);
 
                 const rcUser = await rcUsers.next();
                 if (!rcUser || !rcUser.ldap) continue;
@@ -96,7 +97,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                 if (this.kcUsers[rcUser.username]?.length > 1) {
                     error = new MultipleFoundError(`Multiple users found in Keycloak: ${decodeUsername(rcUser.username)} / ${rcUser.username} / ${rcUser._id}`);
                 }
-                await log.debug(error.message);
+                await logger.debug(error.message);
 
                 const rcSubscriptionFilter = {'u._id': rcUser._id};
                 const rcSubscriptionsCount = await subscriptionCollection.countDocuments(rcSubscriptionFilter);
@@ -105,7 +106,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     'roles': 'owner'
                 });
 
-                await log.debug(`Subscription count: ${rcSubscriptionsCount} Owner count: ${rcSubscriptionsOwnerCount}`);
+                await logger.debug(`Subscription count: ${rcSubscriptionsCount} Owner count: ${rcSubscriptionsOwnerCount}`);
                 this.results.push({
                     error,
                     payload: {
@@ -118,7 +119,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
             }
             return;
         });
-        log.finish();
+        logger.finish();
 
         if (!force) {
             return success;
@@ -129,15 +130,13 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
             result.error.type === ERROR_NOT_FOUND
         );
 
-        await log.info(`Removing ${usersToDelete.length} users without subscriptions`);
-        //const usersToDeleteIds = usersToDelete.map((user) => user.payload.rcUser._id);
-        //ToDo: Delete rooms where multiple users but others need to be removed too
-        //ToDo: Delete rooms where myself is the only owner???
+        await logger.info(`Removing ${usersToDelete.length} users without subscriptions`);
+        const usersToDeleteIds = usersToDelete.map((user) => user.payload.rcUser._id);
 
         count = 0;
         for(const user of usersToDelete) {
-            log.process(`Removing user ${++count}/${usersToDelete.length}`);
-            await log.info(`Removing user ${count}/${usersToDelete.length} (${ user.payload.rcUser._id})       `);
+            logger.process(`Removing user ${++count}/${usersToDelete.length}`);
+            await logger.info(`Removing user ${count}/${usersToDelete.length} (${ user.payload.rcUser._id})       `);
 
             try {
                 if (user.payload.subscriptionsCount > 0) {
@@ -147,25 +146,26 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     });
 
                     // Check if all subscriptions have no other members in room
-                    if (!await every(rcSubscriptions.clone(), async (subscription) =>
-                        await subscriptionCollection.countDocuments({
+                    if (!await every(rcSubscriptions.clone(), async (subscription) => {
+                        const subscriptionsCount = await subscriptionCollection.countDocuments({
                             'rid': subscription.rid,
-                            /*
                             'u._id': { '$nin': [
                                     ...usersToDeleteIds,
+                                    user.payload.rcUser._id,
                                     rocketChatService.currentLogin?.userId
                             ] },
-                             */
-                            'u._id': { '$ne': rocketChatService.currentLogin?.userId },
                             'u.username': { '$ne': 'System' },
-                        }) === 1
-                    )) {
-                        log.finish();
-                        await log.error(`User has subscriptions with multiple users in room! Skipping...`);
+                        });
+
+                        // If no other users in the room delete the room of
+                        // if the user is owner he could delete the room but we will ensure the room is invalid in the next check
+                        return (subscriptionsCount === 0 || subscription?.roles?.includes('owner'));
+                    })) {
+                        await logger.error(`User has subscriptions with multiple users in a valid room! Skipping...`);
                         continue;
                     }
 
-                    // Check if room does not exists in mariadb anymore
+                    // Check if room does not exist in mariadb anymore
                     if (!await every(rcSubscriptions.clone(), async (subscription) => {
                         const sessionCount = await mysqlFn<any>(
                             'query',
@@ -177,18 +177,18 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                         );
                         return (sessionCount[0].count + chatCount[0].count) <= 0;
                     })) {
-                        log.finish();
-                        await log.error(`Some user subscription rooms are still in DB! Skipping...`);
+                        await logger.error(`Some user subscription rooms are still in DB! Skipping...`);
                         continue;
                     }
 
                     // Get failed user from keycloak again to ensure there was no loading error on preload of keycloak users
                     if (VERIFY_MISSING_USERS) {
                         const keycloakUsers = await kcAdminClient.users.find({
+                            exact: true,
                             username: user.payload.rcUser.username,
                             realm: config.keycloak.realm
                         });
-                        if (keycloakUsers.length === 1) continue;
+                        if (keycloakUsers.length >= 1) continue;
                     }
 
                     while(await rcSubscriptions.hasNext()) {
@@ -202,8 +202,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                             });
                             await rocketChatService.post('groups.delete', { roomId: rcSubscription.rid });
                         } catch (e) {
-                            log.finish();
-                            await log.error(`Error deleting user subscription: ${rcSubscription._id}`, e);
+                            await logger.error(`Error deleting user subscription: ${rcSubscription._id}`, e);
                             throw e;
                         }
                     }
@@ -213,8 +212,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     await rocketChatService.post('users.delete', { userId: user.payload.rcUser._id });
                     this.results = this.results.filter(result => result.payload.rcUser._id !== user.payload.rcUser._id);
                 } catch (e) {
-                    log.finish();
-                    await log.error(`Error deleting user: ${user.payload.rcUser._id}`, e);
+                    await logger.error(`Error deleting user: ${user.payload.rcUser._id}`, e);
                 }
             } catch (e) {
                 process.exit(1);

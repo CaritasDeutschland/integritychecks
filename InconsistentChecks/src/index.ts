@@ -10,6 +10,7 @@ import config from './config/config.js';
 import rocketChatService from "./helper/rocketChatService.js";
 
 import * as checks from './checks/index.js';
+import logger from "./helper/logger.js";
 
 let kcAdminRefreshInterval: NodeJS.Timer;
 let mysqlKeepAliveInterval: NodeJS.Timer;
@@ -24,48 +25,6 @@ let logDateString: string;
 export let logReportFileHandle: FileHandle;
 export let logResultFileHandle: FileHandle | null;
 
-export const log = {
-    inProcess: false,
-    silent: false,
-    verbosity: config.verbosity,
-    info: async (...message: any[]) => {
-        if (!log.inProcess && log.verbosity >= 2 && !log.silent) {
-            process.stdout.write(`[INFO] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
-        }
-        if (logReportFileHandle) {
-            await logReportFileHandle.write(`[INFO] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
-        }
-    },
-    error: async (...message: any[]) => {
-        if (!log.inProcess && log.verbosity >= 0 && !log.silent) {
-            process.stdout.write(`[ERROR] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
-        }
-        if (logReportFileHandle) {
-            await logReportFileHandle.write(`[ERROR] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
-        }
-    },
-    debug: async (...message: any[]) => {
-        if (!log.inProcess && log.verbosity >= 3 && !log.silent) {
-            process.stdout.write(`[DEBUG] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
-        }
-        if (logReportFileHandle) {
-            await logReportFileHandle.write(`[DEBUG] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\n`);
-        }
-    },
-    process: (...message: any[]) => {
-        if (log.verbosity == 1 && !log.silent) {
-            process.stdout.write(`[PROCESS] ${message.map((msg) => JSON.stringify(msg, null, 2)).join(' ')}\r`);
-            log.inProcess = true;
-        }
-    },
-    finish: () => {
-        if (log.verbosity == 1 && !log.silent) {
-            process.stdout.write(`\n`);
-            log.inProcess = false;
-        }
-    },
-}
-
 export const mysqlFn = async<T>(fn: 'query' | 'end' | 'connect', ...args: [any?]): Promise<T> => {
     return await new Promise((resolve, reject) => {
         const fnArgs: any[] = [
@@ -78,7 +37,7 @@ export const mysqlFn = async<T>(fn: 'query' | 'end' | 'connect', ...args: [any?]
 }
 
 const bootup = async () => {
-    await log.info("Bootup ...");
+    await logger.info("Bootup ...");
 
     if (config.logPath) {
         try {
@@ -91,42 +50,42 @@ const bootup = async () => {
         logReportFileHandle = await fs.promises.open(`${config.logPath}/report_${logDateString}.log`, 'w');
     }
 
-    await log.info("Check config ...");
+    await logger.info("Check config ...");
     if (!config.mysql.password) {
-        await log.error("No MYSQL_PASSWORD set in config");
+        await logger.error("No MYSQL_PASSWORD set in config");
         process.exit(1);
     }
     if (!config.keycloak.password) {
-        await log.error("No KEYCLOAK_PASSWORD set in config");
+        await logger.error("No KEYCLOAK_PASSWORD set in config");
         process.exit(1);
     }
     if (!config.mongo.db) {
-        await log.error("No DB set in config");
+        await logger.error("No DB set in config");
         process.exit(1);
     }
     if (!config.mongo.uri) {
-        await log.error("No URI set in config");
+        await logger.error("No URI set in config");
         process.exit(1);
     }
     if (!config.rocketChat.username) {
-        await log.error("No ROCKETCHAT_USER set in config");
+        await logger.error("No ROCKETCHAT_USER set in config");
         process.exit(1);
     }
     if (!config.rocketChat.password) {
-        await log.error("No ROCKETCHAT_PASSWORD set in config");
+        await logger.error("No ROCKETCHAT_PASSWORD set in config");
         process.exit(1);
     }
 
-    await log.info("Started");
+    await logger.info("Started");
 
     /* Keycloak */
-    await log.info("Start keycloak client ...");
+    await logger.info("Start keycloak client ...");
     kcAdminClient = new KcAdminClient({
         baseUrl: `${config.keycloak.protocol}://${config.keycloak.host}:${config.keycloak.port}${config.keycloak.path}`,
         realmName: 'master',
         requestOptions: {}
     });
-    await log.info("Authorization ...");
+    await logger.info("Authorization ...");
     await kcAdminClient.auth({
         username: config.keycloak.username,
         password: config.keycloak.password,
@@ -140,14 +99,14 @@ const bootup = async () => {
             clientId: config.keycloak.clientId,
         });
     }, 58 * 1000);
-    await log.info("Authorized");
+    await logger.info("Authorized");
 
     /* MongoDB */
-    await log.info("Start mongodb ...");
+    await logger.info("Start mongodb ...");
     mongoClient = new MongoClient(config.mongo.uri);
     database = mongoClient.db(config.mongo.db);
     await database.command({ ping: 1 });
-    await log.info("Connected");
+    await logger.info("Connected");
 
     /* MySQL */
     mysqlConn = mysql.createConnection({
@@ -158,12 +117,12 @@ const bootup = async () => {
         port: config.mysql.port,
     });
 
-    await log.info("Connect ...");
+    await logger.info("Connect ...");
     await mysqlFn<void>('connect');
     mysqlKeepAliveInterval = setInterval(async () => {
         await mysqlFn("query", "SELECT 1;");
     }, 5 * 60 * 1000);
-    await log.info("Connected ...");
+    await logger.info("Connected ...");
 
     /* Opensearch */
     if (
@@ -171,7 +130,7 @@ const bootup = async () => {
         config.opensearch.username &&
         config.opensearch.password
     ) {
-        await log.info("Start opensearch client ...");
+        await logger.info("Start opensearch client ...");
         const indexDate = new Date();
         opensearchIndex = `${config.opensearch.index}-${indexDate.toJSON().split('T')[0].replace(/-/g, '.')}`;
         const settings = {
@@ -191,7 +150,7 @@ const bootup = async () => {
         });
 
         if (!(await opensearchClient.indices.exists({ index: opensearchIndex })).body) {
-            await log.info(`Creating index ${opensearchIndex} ...`);
+            await logger.info(`Creating index ${opensearchIndex} ...`);
             await opensearchClient.indices.create({
                 index: opensearchIndex,
                 body: settings,
@@ -199,31 +158,31 @@ const bootup = async () => {
         }
     }
     /* Rocket.chat */
-    await log.info("Start rocket.chat service ...");
+    await logger.info("Start rocket.chat service ...");
     await rocketChatService.login();
 }
 
 const teardown = async () => {
-    await log.info("Tearing down ...");
+    await logger.info("Tearing down ...");
     clearInterval(kcAdminRefreshInterval);
     clearInterval(mysqlKeepAliveInterval);
     await mysqlFn('end');
     await mongoClient.close();
     await rocketChatService.logout();
-    await log.info("Done!");
+    await logger.info("Done!");
     if (logReportFileHandle) {
         await logReportFileHandle.close();
     }
 }
 
 async function run(force: boolean = false, limit: number | null = null, skip: number | null = null) {
-    await log.info("Run ...");
+    await logger.info("Run ...");
 
     for (const checkName of config.activeChecks) {
         if (!checks[checkName]) {
             return;
         }
-        await log.info(`Run check ${checkName} ...`);
+        await logger.info(`Run check ${checkName} ...`);
 
         try {
             const correlationId = uuidv4();
@@ -243,7 +202,7 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
             }
 
             if (config.teamsWebhookUrl) {
-                await log.info(`Sending teams webhook notification ...`);
+                await logger.info(`Sending teams webhook notification ...`);
                 const data = {
                     "@type": "MessageCard",
                     "@context": "http://schema.org/extensions",
@@ -284,12 +243,12 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
                     }
                 })
                     .catch((err) => {
-                        log.error(err);
+                        logger.error(err);
                     });
             }
 
             if (opensearchClient) {
-                await log.info(`Sending bulk errors to opensearch ...`);
+                await logger.info(`Sending bulk errors to opensearch ...`);
                 const result = await opensearchClient.helpers.bulk({
                     refresh: true,
                     datasource: check.results.map((result) => (
@@ -319,13 +278,13 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
                 });
 
                 if (result.failed > 0) {
-                    await log.error('Publishing errors to opensearch failed!');
-                    await log.error(result);
+                    await logger.error('Publishing errors to opensearch failed!');
+                    await logger.error(result);
                 }
             }
 
             for(const r in check.results) {
-                await log.info(`[${check.results[r].error.type}] ${check.results[r].error.message}`);
+                await logger.info(`[${check.results[r].error.type}] ${check.results[r].error.message}`);
 
                 if (logResultFileHandle) {
                     await logResultFileHandle.write([
@@ -340,9 +299,8 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
                 logResultFileHandle = null;
             }
         } catch (e: unknown) {
-            log.finish();
-            await log.error('Unknown error!');
-            await log.error(e);
+            await logger.error('Unknown error!');
+            await logger.error(e);
             if (e instanceof Error) {
                 if (e.stack) {
                     process.stdout.write(e.stack)
@@ -372,30 +330,30 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
         skip = parseInt(process.argv[skipArg + 1]);
     }
 
-    log.silent = process.argv.findIndex((arg) => arg === '-s') >= 0;
+    logger.silent = process.argv.findIndex((arg) => arg === '-s') >= 0;
 
     const verboseArg = process.argv.findIndex((arg) => arg.startsWith('-v'));
     if (verboseArg >= 0) {
-        log.verbosity = process.argv[verboseArg].split('v').length - 1;
+        logger.verbosity = process.argv[verboseArg].split('v').length - 1;
     }
 
-    await log.info("Force: ", force);
-    await log.info("Silent: ", log.silent);
-    await log.info("Verbosity: ", log.verbosity);
-    await log.info("Limit: ", limit);
-    await log.info("Skip: ", skip);
+    await logger.info("Force: ", force);
+    await logger.info("Silent: ", logger.silent);
+    await logger.info("Verbosity: ", logger.verbosity);
+    await logger.info("Limit: ", limit);
+    await logger.info("Skip: ", skip);
 
     try {
         await bootup();
         await run(force, limit, skip);
     } catch (e: any) {
-        await log.error("Error: ", e.message);
+        await logger.error("Error: ", e.message);
     }
 
     await teardown();
 })();
 
 process.on('unhandledRejection', (err) => {
-    log.error(err);
+    logger.error(err);
     process.exit(1);
 })

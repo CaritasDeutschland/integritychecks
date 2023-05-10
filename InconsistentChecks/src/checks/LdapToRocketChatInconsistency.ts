@@ -1,10 +1,11 @@
 import { timesLimit } from "async";
 import AbstractCheck from "./AbstractCheck.js";
-import {database, kcAdminClient, log} from "../index.js";
+import {database, kcAdminClient} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
 import config from "../config/config.js";
 import CheckError from "../types/CheckError";
 import CheckResult from "../types/CheckResult";
+import logger from "../helper/logger.js";
 
 const CHUNK_SIZE: number = 100;
 const PARALLEL: number = 10;
@@ -33,9 +34,9 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
     async run(force: boolean, limit: number | null, skip: number | null): Promise<boolean> {
         let success = true;
 
-        await log.info("Load users ...");
+        await logger.info("Load users ...");
         const usersCount = Math.max(await kcAdminClient.users.count({ realm: config.keycloak.realm }) - (skip || 0), 0);
-        await log.info(`Users: ${usersCount}`);
+        await logger.info(`Users: ${usersCount}`);
 
         const chunks = Math.max(Math.ceil(usersCount / CHUNK_SIZE), 0);
 
@@ -53,8 +54,8 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
             });
 
             for(const kc in keycloakUsers) {
-                log.process(`Checking users: ${(skip || 0) + count++}/${usersCount}`);
-                await log.info(`Checking users ${(skip || 0) + count}/${usersCount}`);
+                logger.process(`Checking users: ${(skip || 0) + count++}/${usersCount}`);
+                await logger.info(`Checking users ${(skip || 0) + count}/${usersCount}`);
 
                 const kcUser = keycloakUsers[kc];
                 if (!kcUser) continue;
@@ -71,7 +72,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
                 if (rcUsersCount > 1) {
                     error = new MultipleFoundError(`Multiple users found in Rocket.chat: ${decodeUsername(kcUser.username)}/${kcUser.username}/${kcUser.id}`);
                 }
-                await log.debug(error.message);
+                await logger.debug(error.message);
 
                 this.results.push({
                     error,
@@ -83,7 +84,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
             }
             return;
         });
-        log.finish();
+        logger.finish();
 
         return success;
     }
