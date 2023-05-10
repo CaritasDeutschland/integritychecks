@@ -1,10 +1,12 @@
-import { timesLimit } from 'async';
+import { timesLimit, every } from 'async';
 import AbstractCheck from "./AbstractCheck.js";
-import {database, kcAdminClient, log} from "../index.js";
+import {database, kcAdminClient, log, mysqlConn, mysqlFn} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
 import config from "../config/config.js";
 import CheckError from "../types/CheckError";
 import CheckResult from "../types/CheckResult";
+import rocketChatService from "../helper/rocketChatService.js";
+import {subscriptions} from "@rocket.chat/sdk/dist/lib/driver";
 
 const CHUNK_SIZE: number = 100;
 const PARALLEL: number = 10;
@@ -37,7 +39,7 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
         const chunks = Math.max(Math.ceil(usersCount / 100), 0);
 
         let count = 0;
-        await timesLimit(chunks, 2, async (c: number) => {
+        await timesLimit(chunks, 6, async (c: number) => {
             const keycloakUsers = await kcAdminClient.users.find({
                 first: c * 100,
                 max: 100,
@@ -109,14 +111,111 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
                     payload: {
                         username: decodeUsername(rcUser.username),
                         rcUser,
-                        subscriptions: rcSubscriptionsCount,
-                        subscriptionsOwner: rcSubscriptionsOwnerCount,
+                        subscriptionsCount: rcSubscriptionsCount,
+                        subscriptionsOwnerCount: rcSubscriptionsOwnerCount,
                     }
                 });
             }
             return;
         });
         log.finish();
+
+        if (!force) {
+            return success;
+        }
+
+        // Remove users without rooms
+        const usersWithoutSubscriptions = this.results.filter(result =>
+            result.error.type === ERROR_NOT_FOUND
+            && result.payload.subscriptionsCount === 0
+        );
+        await log.info(`Removing ${usersWithoutSubscriptions.length} users without subscriptions`);
+        count = 0;
+        for(const user of usersWithoutSubscriptions) {
+            log.process(`Removing user ${count++}/${usersWithoutSubscriptions.length}`);
+            await log.info(`Removing user ${count}/${usersWithoutSubscriptions.length} (${ user.payload.rcUser._id})       `);
+            try {
+                await rocketChatService.post('users.delete', { userId: user.payload.rcUser._id });
+                this.results = this.results.filter(result => result.payload.rcUser._id !== user.payload.rcUser._id);
+            } catch (e) {
+                await log.error(`Error deleting user: ${user.payload.rcUser._id}`, e);
+            }
+        }
+
+        // Remove users with subscriptions to rooms with only one participant
+        const usersWithRooms = this.results.filter(result =>
+            result.error.type === ERROR_NOT_FOUND
+            && result.payload.subscriptionsCount > 1
+        );
+        await log.info(`Removing ${usersWithRooms.length} users with room`);
+        count = 0;
+        for (const user of usersWithRooms) {
+            log.process(`Removing user ${count++}/${usersWithRooms.length} (${ user.payload.rcUser._id})       `);
+            await log.info(`Removing user ${count}/${usersWithRooms.length} (${ user.payload.rcUser._id})`);
+            const rcSubscriptions = await subscriptionCollection.find({
+                'u._id': user.payload.rcUser._id,
+                'rid': { '$ne': 'GENERAL' }
+            });
+
+            // Check if all subscriptions have no other members in room
+            if (!await every(rcSubscriptions.clone(), async (subscription) =>
+                await subscriptionCollection.countDocuments({
+                    'rid': subscription.rid,
+                    'u._id': { '$ne': rocketChatService.currentLogin?.userId },
+                    'u.username': { '$ne': 'System' },
+                }) === 1
+            )) {
+                log.finish();
+                await log.error(`User has subscriptions with multiple users in room! Skipping...`);
+                continue;
+            }
+
+            // Check if room does not exists in mariadb anymore
+            if (!await every(rcSubscriptions.clone(), async (subscription) => {
+                const sessionCount = await mysqlFn<any>(
+                    'query',
+                    `SELECT count(*) as count FROM session WHERE rc_group_id = "${subscription.rid}" or rc_feedback_group_id = "${subscription.rid}"`
+                );
+                const chatCount = await mysqlFn<any>(
+                    'query',
+                    `SELECT count(*) as count FROM chat WHERE rc_group_id = "${subscription.rid}"`
+                );
+                return (sessionCount[0].count + chatCount[0].count) <= 0;
+            })) {
+                log.finish();
+                await log.error(`Some user subscription rooms are still in DB! Skipping...`);
+                continue;
+            }
+
+            try {
+                while(await rcSubscriptions.hasNext()) {
+                    const rcSubscription = await rcSubscriptions.next();
+                    if (!rcSubscription) continue;
+                    try {
+                        // Add technical user to room
+                        await rocketChatService.post('groups.invite', {
+                            userId: rocketChatService.currentLogin?.userId,
+                            roomId: rcSubscription.rid
+                        });
+                        await rocketChatService.post('groups.delete', { roomId: rcSubscription.rid });
+                    } catch (e) {
+                        log.finish();
+                        await log.error(`Error deleting user subscription: ${rcSubscription._id}`, e);
+                        throw e;
+                    }
+                }
+
+                try {
+                    await rocketChatService.post('users.delete', { userId: user.payload.rcUser._id });
+                    this.results = this.results.filter(result => result.payload.rcUser._id !== user.payload.rcUser._id);
+                } catch (e) {
+                    log.finish();
+                    await log.error(`Error deleting user: ${user.payload.rcUser._id}`, e);
+                }
+            } catch (e) {
+                process.exit(1);
+            }
+        }
 
         return success;
     }

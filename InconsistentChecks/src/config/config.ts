@@ -9,6 +9,7 @@ const config: {
     logPath: string | null,
     teamsWebhookUrl: string | null,
     verbosity: number,
+    force: boolean,
     mysql: {
         db: string,
         host: string,
@@ -39,11 +40,18 @@ const config: {
         db: string,
         uri: string,
     },
+    rocketChat: {
+        username: string,
+        password: string,
+        host: string,
+        useSsl: boolean
+    },
     activeChecks: (keyof typeof checks)[],
 } = {
     logPath: process.env.LOG_PATH && process.env.LOG_PATH !== '' ? path.resolve(process.env.LOG_PATH) : null,
     teamsWebhookUrl: process.env.TEAMS_WEBHOOK_URL ?? null,
     verbosity: process.env.VERBOSITY ? parseInt(process.env.VERBOSITY) : 0,
+    force: process.env.FORCE === 'true' || process.env.FORCE === '1',
     mysql: {
         db: process.env.MYSQL_DB || 'userservice',
         host: process.env.MYSQL_HOST || 'localhost',
@@ -73,6 +81,14 @@ const config: {
     mongo: {
         db: process.env.MONGO_DB || 'rocketchat',
         uri: `mongodb://${encodeURIComponent(process.env.MONGODB_USER ?? '')}:${encodeURIComponent(process.env.MONGODB_PASSWORD ?? '')}@${process.env.MONGODB_HOST}:${process.env.MONGODB_PORT || 27017}/${process.env.MONGO_DB || 'rocketchat'}?retryWrites=true&w=majority&authMechanism=SCRAM-SHA-1&directConnection=true`
+    },
+    rocketChat: {
+        username: process.env.ROCKETCHAT_USER || 'bot',
+        password: process.env.ROCKETCHAT_PASSWORD || 'pass',
+        host: process.env.ROCKETCHAT_URL || 'localhost:3000',
+        useSsl: (process.env.ROCKETCHAT_USE_SSL)
+            ? ((process.env.ROCKETCHAT_USE_SSL || '').toString().toLowerCase() === 'true')
+            : ((process.env.ROCKETCHAT_URL || '').toString().toLowerCase().startsWith('https'))
     },
     activeChecks: (process.env.ACTIVE_CHECKS || '').split(',') as (keyof typeof checks)[],
 };

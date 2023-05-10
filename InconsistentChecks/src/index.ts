@@ -6,9 +6,10 @@ import {FileHandle} from "fs/promises";
 import * as fs from "fs";
 import { v4 as uuidv4 } from 'uuid';
 import { Client }  from '@opensearch-project/opensearch';
+import config from './config/config.js';
+import rocketChatService from "./helper/rocketChatService.js";
 import { timesLimit } from 'async';
 
-import config from './config/config.js';
 import * as checks from './checks/index.js';
 
 let kcAdminRefreshInterval: NodeJS.Timer;
@@ -16,6 +17,7 @@ let mysqlKeepAliveInterval: NodeJS.Timer;
 export let kcAdminClient: KcAdminClient;
 let opensearchClient: Client;
 let opensearchIndex: string;
+let rcUserId: string;
 export let mysqlConn: Connection;
 export let mongoClient: MongoClient;
 export let database: Db;
@@ -65,7 +67,7 @@ export const log = {
     },
 }
 
-const mysqlFn = async<T>(fn: 'query' | 'end' | 'connect', ...args: [any?]): Promise<T> => {
+export const mysqlFn = async<T>(fn: 'query' | 'end' | 'connect', ...args: [any?]): Promise<T> => {
     return await new Promise((resolve, reject) => {
         const fnArgs: any[] = [
             ...args,
@@ -189,6 +191,9 @@ const bootup = async () => {
             });
         }
     }
+    /* Rocket.chat */
+    await log.info("Start rocket.chat service ...");
+    await rocketChatService.login();
 }
 
 const teardown = async () => {
@@ -197,6 +202,7 @@ const teardown = async () => {
     clearInterval(mysqlKeepAliveInterval);
     await mysqlFn('end');
     await mongoClient.close();
+    await rocketChatService.logout();
     await log.info("Done!");
     if (logReportFileHandle) {
         await logReportFileHandle.close();
@@ -341,7 +347,7 @@ async function run(force: boolean = false, limit: number | null = null, skip: nu
 }
 
 (async () => {
-    let force: boolean = false;
+    let force: boolean = config.force;
     const forceArg = process.argv.findIndex((arg) => arg === '-f' || arg === '--force');
     if (forceArg >= 0) {
         force = true;
