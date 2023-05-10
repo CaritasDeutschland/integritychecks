@@ -8,7 +8,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { Client }  from '@opensearch-project/opensearch';
 import config from './config/config.js';
 import rocketChatService from "./helper/rocketChatService.js";
-import { timesLimit } from 'async';
 
 import * as checks from './checks/index.js';
 

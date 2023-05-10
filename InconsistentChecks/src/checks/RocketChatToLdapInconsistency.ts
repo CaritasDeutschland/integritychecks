@@ -6,7 +6,6 @@ import config from "../config/config.js";
 import CheckError from "../types/CheckError";
 import CheckResult from "../types/CheckResult";
 import rocketChatService from "../helper/rocketChatService.js";
-import {subscriptions} from "@rocket.chat/sdk/dist/lib/driver";
 
 const CHUNK_SIZE: number = 100;
 const PARALLEL: number = 10;
