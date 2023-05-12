@@ -10,6 +10,7 @@ RUN yarn run build
 # Nginx
 FROM node:18
 WORKDIR /app
+EXPOSE 3000
 COPY --from=build-deps /app/package.json ./package.json
 COPY --from=build-deps /app/yarn.lock ./yarn.lock
 

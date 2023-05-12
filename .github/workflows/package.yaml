@@ -10,7 +10,7 @@ jobs:
     name: Build
     strategy:
       matrix:
-        package: ['InconsistentChecks']
+        package: ['InconsistentChecks', 'Tools']
     if: "!contains(github.event.head_commit.author, 'action@github.com')"
     runs-on: ubuntu-latest
     steps:
