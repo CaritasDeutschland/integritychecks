@@ -194,6 +194,7 @@ for (const name in tools) {
         try {
             await bootup();
             await tool.run(req.params, req.body);
+            await teardown();
             res.send('OK');
         } catch (e: any) {
             await teardown();
