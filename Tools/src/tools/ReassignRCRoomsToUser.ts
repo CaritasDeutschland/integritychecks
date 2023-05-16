@@ -9,17 +9,18 @@ class ReassignRCRoomsToUser extends AbstractTool {
     constructor() {
         super('POST', undefined, [
             { name: 'userId', description: 'The userId (mariadb) of the consultant to reassign sessions.', type: 'string' },
+            { name: 'force', description: 'Assign sessions.', type: 'boolean', optional: true },
         ]);
     }
 
-    async run(params: {}, body: { userId: string }): Promise<boolean> {
-        return await reassignRCRoomsToUser(body.userId);
+    async run(params: {}, body: { userId: string, force: boolean }): Promise<boolean> {
+        return await reassignRCRoomsToUser(body.userId, body.force);
     }
 }
 
 export default ReassignRCRoomsToUser;
 
-const reassignRCRoomsToUser = async (userId: string) => {
+const reassignRCRoomsToUser = async (userId: string, force: boolean = false) => {
     const consultants = await mysqlFn<any>(
         'query',
         `SELECT * FROM userservice.consultant WHERE consultant_id = "${userId}"`
@@ -100,7 +101,7 @@ const reassignRCRoomsToUser = async (userId: string) => {
         throw new ToolsError(`No sessions found for agency "${agencyData.agency.id}".`);
     }
 
-    const assignRoom = async (roomId: string, id: number) => {
+    const assignRoom = async (roomId: string, id: number, force: boolean = false) => {
         try {
             // Add technical user to room
             await rocketChatService.post('groups.invite', {
@@ -126,10 +127,14 @@ const reassignRCRoomsToUser = async (userId: string) => {
         }
 
         await logger.info(`Adding consultant "${consultant.rc_user_id}" to session "${roomId}" / "${id}".`);
-        await rocketChatService.post('groups.invite', {
-            userId: consultant.rc_user_id,
-            roomId
-        });
+        if (force) {
+            await rocketChatService.post('groups.invite', {
+                userId: consultant.rc_user_id,
+                roomId
+            });
+        } else {
+            await logger.info(`Doing nothing. Force is not set`);
+        }
 
         // Remove technical user from room
         await rocketChatService.post('groups.leave', { roomId });
@@ -137,7 +142,7 @@ const reassignRCRoomsToUser = async (userId: string) => {
 
     for (const agencySession of agencySessions) {
         try {
-            if (!await assignRoom(agencySession.rc_group_id, agencySession.id)) {
+            if (!await assignRoom(agencySession.rc_group_id, agencySession.id, force)) {
                 continue;
             }
         } catch (e) {
@@ -148,7 +153,7 @@ const reassignRCRoomsToUser = async (userId: string) => {
 
         if (agencySession.rc_feedback_group_id) {
             try {
-                await assignRoom(agencySession.rc_feedback_group_id, agencySession.id);
+                await assignRoom(agencySession.rc_feedback_group_id, agencySession.id, force);
             } catch (e) {
                 // Remove technical user from room
                 await rocketChatService.post('groups.leave', { roomId: agencySession.rc_feedback_group_id });

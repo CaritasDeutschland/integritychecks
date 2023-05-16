@@ -177,14 +177,14 @@ for (const name in tools) {
             return next();
         }
 
-        if (!tool.bodyParams.every((param) => req.body[param.name] !== undefined && req.body[param.name] !== null)) {
+        if (!tool.bodyParams.every((param) => param.optional || req.body[param.name] !== undefined && req.body[param.name] !== null)) {
             const missingParams = tool.bodyParams.filter((param) =>
                 req.body[param.name] === undefined || req.body[param.name] === null
             );
             return res.status(400).send(`Missing params: ${missingParams.map((param) => param.name).join(', ')}`);
         }
 
-        if (!tool.bodyParams.every((param) => typeof req.body[param.name] === param.type)) {
+        if (!tool.bodyParams.every((param) => !req.body[param.name] || typeof req.body[param.name] === param.type)) {
             const missingParams = tool.bodyParams.filter((param) =>
                 typeof req.body[param.name] !== param.type
             );
