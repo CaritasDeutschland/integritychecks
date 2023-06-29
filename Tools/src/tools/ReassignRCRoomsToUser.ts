@@ -142,23 +142,15 @@ const reassignRCRoomsToUser = async (userId: string, force: boolean = false) => 
 
     for (const agencySession of agencySessions) {
         try {
-            if (!await assignRoom(agencySession.rc_group_id, agencySession.id, force)) {
-                continue;
+            await assignRoom(agencySession.rc_group_id, agencySession.id, force);
+            
+            if (agencySession.rc_feedback_group_id) {
+                await assignRoom(agencySession.rc_feedback_group_id, agencySession.id, force);
             }
         } catch (e) {
             // Remove technical user from room
             await rocketChatService.post('groups.leave', { roomId: agencySession.rc_group_id });
             throw e;
-        }
-
-        if (agencySession.rc_feedback_group_id) {
-            try {
-                await assignRoom(agencySession.rc_feedback_group_id, agencySession.id, force);
-            } catch (e) {
-                // Remove technical user from room
-                await rocketChatService.post('groups.leave', { roomId: agencySession.rc_feedback_group_id });
-                throw e;
-            }
         }
     }
 
