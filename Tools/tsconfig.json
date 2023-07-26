@@ -13,6 +13,9 @@
     // Needed for CommonJS modules
     "allowSyntheticDefaultImports": true, // (C)
     //
-    "declaration": true,
-  }
+    "declaration": true
+  },
+  "include": [
+    "src/**/*"
+  ]
 }

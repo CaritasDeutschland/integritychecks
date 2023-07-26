@@ -1,0 +1,35 @@
+html
+    head
+        title= title
+    body
+        include includes/head.pug
+        h2= title
+        div
+            ul
+                li
+                    a(class='button' href=prevLink) Prev
+                li
+                    a(class='button' href=nextLink) Next
+        if !hasContent
+            div
+                | No sendings found
+        else
+            div
+                div
+                    form(action='/inxmail/blocklistdelete', method='post')
+                        input(type='hidden' name='_method' value='delete')
+                        button(type='submit') Delete all
+                div
+                    table(width='100%', border=1)
+                        tbody
+                            each item in results
+                                tr
+                                    td= item.blockDate
+                                    td= item.email
+                                    td= item.blockType
+                                    td= item._links.self.href
+                                    td
+                                        form(action='/inxmail/blocklistdelete', method='post')
+                                            input(type='hidden' name='_method' value='delete')
+                                            input(type='hidden' name='email' value=item.email)
+                                            button(type='submit') Delete

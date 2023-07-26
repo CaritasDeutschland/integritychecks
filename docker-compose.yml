@@ -1,0 +1,20 @@
+version: '3.7'
+services:
+  tools:
+    image: node:18
+    container_name: onlineberatung_fixtures_tools
+    command: bash -c "yarn && yarn run dev"
+    volumes:
+      - ./Tools:/app
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+  #buildimage:
+  #  image: ghcr.io/caritasdeutschland/integritychecks/inconsistentchecks:latest
+  #  container_name: onlineberatung_fixtures_build
+  #  #volumes:
+  #  #  - ./InconsistentChecks:/app
+  #  environment:
+  #    - NODE_ENV=development

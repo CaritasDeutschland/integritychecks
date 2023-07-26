@@ -20,11 +20,13 @@
     "@types/mysql": "^2.15.21",
     "@types/node": "^18.11.19",
     "@types/uuid": "^9.0.1",
+    "nodemon": "^3.0.1",
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsc && cp -r src/views dist/",
+    "start": "node dist/index.js",
+    "dev": "nodemon -e ts --watch src --exec \"yarn run build && yarn run start\""
   },
   "dependencies": {
     "@keycloak/keycloak-admin-client": "^21.1.1",
@@ -37,6 +39,10 @@
     "hi-base32": "^0.5.1",
     "mongodb": "^5.0.0",
     "mysql": "^2.18.1",
+    "pug": "^3.0.2",
     "uuid": "^9.0.0"
+  },
+  "nodemonConfig": {
+    "delay": 500
   }
 }

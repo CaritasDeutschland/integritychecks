@@ -1,0 +1,26 @@
+html
+    head
+        title= title
+    body
+        include includes/head.pug
+        h2= title
+        div
+            ul
+                li
+                    a(class='button' href=prevLink) Prev
+                li
+                    a(class='button' href=nextLink) Next
+        if !hasContent
+            div
+                | No sendings found
+        else
+            div
+                div
+                    table(width='100%', border=1)
+                        tbody
+                            each item in results
+                                tr
+                                    td= item.sendDate
+                                    td= item.email
+                                    td= item.bounceType
+                                    td= item.bounceDate

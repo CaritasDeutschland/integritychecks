@@ -44,6 +44,11 @@ const config: {
         host: string,
         useSsl: boolean
     },
+    inxmail: {
+        url: string,
+        id: string,
+        key: string,
+    }
 } = {
     logPath: process.env.LOG_PATH && process.env.LOG_PATH !== '' ? path.resolve(process.env.LOG_PATH) : null,
     port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
@@ -87,6 +92,11 @@ const config: {
             ? ((process.env.ROCKETCHAT_USE_SSL || '').toString().toLowerCase() === 'true')
             : ((process.env.ROCKETCHAT_URL || '').toString().toLowerCase().startsWith('https'))
     },
+    inxmail: {
+        url: process.env.INXMAIL_API_URL || 'https://{spaceid}.api.inxmail-commerce.com/api-service/v1',
+        id: process.env.INXMAIL_API_ID || '',
+        key: process.env.INXMAIL_API_KEY || '',
+    }
 };
 
 export default config;

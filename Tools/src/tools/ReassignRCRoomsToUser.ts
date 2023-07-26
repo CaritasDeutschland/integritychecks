@@ -11,6 +11,8 @@ class ReassignRCRoomsToUser extends AbstractTool {
             { name: 'userId', description: 'The userId (mariadb) of the consultant to reassign sessions.', type: 'string' },
             { name: 'force', description: 'Assign sessions.', type: 'boolean', optional: true },
         ]);
+
+        this.deps = ['mysql', 'rocketchat'];
     }
 
     async run(params: {}, body: { userId: string, force: boolean }): Promise<boolean> {

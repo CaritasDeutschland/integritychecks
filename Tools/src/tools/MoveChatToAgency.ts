@@ -10,6 +10,8 @@ class MoveChatToAgency extends AbstractTool {
             { name: 'roomId', description: 'The roomId of the session or chat to move.', type: 'string' },
             { name: 'agencyId', description: 'The agencyId to move the session or chat to.', type: 'number' },
         ]);
+
+        this.deps = ['mysql', 'rocketchat'];
     }
 
     async run(params: {}, body: { roomId: string, agencyId: number }): Promise<boolean> {
