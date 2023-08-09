@@ -20,7 +20,19 @@ let opensearchIndex: string;
 let rcUserId: string;
 export let mysqlConn: Connection;
 export let mongoClient: MongoClient;
-export let database: Db;
+
+export const DATABASE_ROCKETCHAT = 'rocketchat';
+export const DATABASE_STATISTICS = 'statistics';
+
+const DATABASES: (typeof DATABASE_ROCKETCHAT | typeof DATABASE_STATISTICS)[] = [
+  DATABASE_STATISTICS,
+  DATABASE_ROCKETCHAT,
+];
+
+export let databases: {
+    [key in typeof DATABASES[number]]: Db
+} = {} as {[key in typeof DATABASES[number]]: Db};
+
 let logDateString: string;
 export let logReportFileHandle: FileHandle;
 export let logResultFileHandle: FileHandle | null;
@@ -57,10 +69,6 @@ const bootup = async () => {
     }
     if (!config.keycloak.password) {
         await logger.error("No KEYCLOAK_PASSWORD set in config");
-        process.exit(1);
-    }
-    if (!config.mongo.db) {
-        await logger.error("No DB set in config");
         process.exit(1);
     }
     if (!config.mongo.uri) {
@@ -104,9 +112,12 @@ const bootup = async () => {
     /* MongoDB */
     await logger.info("Start mongodb ...");
     mongoClient = new MongoClient(config.mongo.uri);
-    database = mongoClient.db(config.mongo.db);
-    await database.command({ ping: 1 });
-    await logger.info("Connected");
+    for (const db of DATABASES) {
+        await logger.info(`Connecting to ${db} ...`);
+        databases[db] = mongoClient.db(db);
+        await databases[db].command({ ping: 1 });
+        await logger.info("Connected");
+    }
 
     /* MySQL */
     mysqlConn = mysql.createConnection({

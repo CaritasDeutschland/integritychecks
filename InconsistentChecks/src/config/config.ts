@@ -37,7 +37,6 @@ const config: {
         password: string,
     },
     mongo: {
-        db: string,
         uri: string,
     },
     rocketChat: {
@@ -79,8 +78,7 @@ const config: {
         password: process.env.KEYCLOAK_PASSWORD || '',
     },
     mongo: {
-        db: process.env.MONGO_DB || 'rocketchat',
-        uri: `mongodb://${encodeURIComponent(process.env.MONGODB_USER ?? '')}:${encodeURIComponent(process.env.MONGODB_PASSWORD ?? '')}@${process.env.MONGODB_HOST}:${process.env.MONGODB_PORT || 27017}/${process.env.MONGO_DB || 'rocketchat'}?retryWrites=true&w=majority&authMechanism=SCRAM-SHA-1&directConnection=true`
+        uri: `mongodb://${encodeURIComponent(process.env.MONGODB_USER ?? '')}:${encodeURIComponent(process.env.MONGODB_PASSWORD ?? '')}@${process.env.MONGODB_HOST}:${process.env.MONGODB_PORT || 27017}?retryWrites=true&w=majority&authMechanism=SCRAM-SHA-1&directConnection=true`
     },
     rocketChat: {
         username: process.env.ROCKETCHAT_USER || 'bot',

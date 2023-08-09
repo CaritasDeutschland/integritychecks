@@ -1,6 +1,6 @@
 import { timesLimit } from "async";
 import AbstractCheck from "./AbstractCheck.js";
-import {database, kcAdminClient} from "../index.js";
+import {databases, kcAdminClient} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
 import config from "../config/config.js";
 import CheckError from "../types/CheckError";
@@ -60,7 +60,7 @@ class LdapToRocketChatInconsistency extends AbstractCheck {
                 const kcUser = keycloakUsers[kc];
                 if (!kcUser) continue;
 
-                const userCollection = database.collection('users');
+                const userCollection = databases.rocketchat.collection('users');
                 const rcUsersCount = await userCollection.countDocuments({
                     username: kcUser.username,
                 });

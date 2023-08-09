@@ -1,6 +1,6 @@
 import { timesLimit, every } from 'async';
 import AbstractCheck from "./AbstractCheck.js";
-import {database, kcAdminClient, mysqlFn} from "../index.js";
+import {databases, kcAdminClient, mysqlFn} from "../index.js";
 import {decodeUsername} from "../helper/user.js";
 import config from "../config/config.js";
 import CheckError from "../types/CheckError";
@@ -64,8 +64,8 @@ class RocketChatToLdapInconsistency extends AbstractCheck {
 
     async run(force: boolean, limit: number | null, skip: number | null): Promise<boolean> {
         let success = true;
-        const userCollection = database.collection('users');
-        const subscriptionCollection = database.collection('rocketchat_subscription');
+        const userCollection = databases.rocketchat.collection('users');
+        const subscriptionCollection = databases.rocketchat.collection('rocketchat_subscription');
 
         await logger.info("Load users ...");
         const userFilter = {};
