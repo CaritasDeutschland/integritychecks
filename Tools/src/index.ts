@@ -12,7 +12,7 @@ import rocketChatService from "./helper/rocketChatService.js";
 import logger from "./helper/logger.js";
 
 import * as tools from './tools/index.js';
-import AbstractTool, {BodyParam, Deps, Param} from "./tools/AbstractTool";
+import AbstractTool, {BodyParam, Deps, Methods, Param} from "./tools/AbstractTool";
 import ToolsError from "./helper/ToolsError.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -187,7 +187,7 @@ const teardown = async (deps: Deps[]) => {
 const docs: {
     name: keyof typeof tools,
     url: string,
-    method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
+    method: Methods[],
     urlParams: Param[],
     bodyParams: BodyParam[],
     getParams: Param[],
@@ -219,7 +219,7 @@ for (const i in orderedTools) {
     });
 
     app.use(tool.getUrl(), async (req, res, next) => {
-        if (req.method != tool.method) {
+        if (!tool.method.includes(req.method as Methods)) {
             return next();
         }
 
@@ -246,7 +246,7 @@ for (const i in orderedTools) {
 
         try {
             await bootup(tool.getDeps());
-            const result = await tool.run(req.params, req.body, req.query);
+            const result = await tool.run(req.params, req.body, req.query, req.method as Methods);
             await teardown(tool.getDeps());
 
             if (typeof result === 'object' && result.type === 'pug') {
@@ -269,7 +269,6 @@ app.get('*', (req, res) => {
     res.send(docs);
 });
 
-
 (async () => {
     const verboseArg = process.argv.findIndex((arg) => arg.startsWith('-v'));
     if (verboseArg >= 0) {
@@ -278,9 +277,10 @@ app.get('*', (req, res) => {
 
     await logger.info("Verbosity: ", logger.verbosity);
 
-    await app.listen(config.port, () => {
+    const server = app.listen(config.port, () => {
         console.log(`Tools listening on port ${config.port}`)
     });
+    server.setTimeout(10 * 60 * 1000);
 })();
 
 process.on('unhandledRejection', (err) => {

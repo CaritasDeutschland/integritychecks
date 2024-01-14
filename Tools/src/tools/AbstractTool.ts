@@ -21,6 +21,8 @@ export type Redirect = {
     url: string,
 }
 
+export type Methods = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+
 abstract class AbstractTool {
     urlParams: Param[] = [];
     getParams: Param[] = [];
@@ -28,15 +30,15 @@ abstract class AbstractTool {
     deps: Deps[] = [];
     path: string = '';
 
-    method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+    method: Methods[];
 
     protected constructor(
-        method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" = "GET",
+        method: Methods | Methods[] = "GET",
         urlParams: Param[] = [],
         bodyParams: BodyParam[] = [],
         getParams: Param[] = [],
     ) {
-        this.method = method;
+        this.method = Array.isArray(method) ? method : [method];
         this.urlParams = urlParams;
         this.bodyParams = bodyParams;
         this.getParams = getParams;
@@ -50,7 +52,7 @@ abstract class AbstractTool {
         return this.deps;
     }
 
-    abstract run(params: any, body: any, request: any): Promise<boolean | string | PugTemplate | Redirect>;
+    abstract run(params: any, body: any, request: any, method: Methods): Promise<boolean | string | PugTemplate | Redirect>;
 }
 
 export default AbstractTool;

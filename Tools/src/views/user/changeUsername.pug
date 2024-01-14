@@ -1,0 +1,105 @@
+html
+    head
+        title= title
+        style
+            include style.css
+    body
+        include includes/head.pug
+        h2= title
+        if error
+            div(class="notification notification--error")= error
+        if success
+            each msg in success
+                div(class="notification notification--success")= msg
+
+            div User successfully updated!
+            div
+                a(class='button' href='/user/changeusername') Change another user
+        else if user
+            div
+                h3 DB User
+                table
+                    tbody
+                        tr
+                            th Username:
+                            td= user.username
+                        tr
+                            th Username (Decrypted):
+                            td= user.usernameDec
+                        tr
+                            th Firstname:
+                            td= user.first_name
+                        tr
+                            th Lastname:
+                            td= user.last_name
+                        tr
+                            th Email:
+                            td= user.email
+            div
+                h3 Rocket.chat User
+                if rcUser
+                    table
+                        tbody
+                            tr
+                                th Username:
+                                td= rcUser.username
+                            tr
+                                th Username (Decrypted):
+                                td= rcUser.usernameDec
+                            tr
+                                th Name:
+                                td= rcUser.name
+                            tr
+                                th Name (Decrypted):
+                                td= rcUser.nameDec
+                else
+                    div Not found
+            div
+                h3 Keycloak User
+                if keycloakUser
+                    table
+                        tbody
+                            tr
+                                th Username:
+                                td= keycloakUser.username
+                            tr
+                                th Username (Decrypted):
+                                td= keycloakUser.usernameDec
+                            tr
+                                th Firstname:
+                                td= keycloakUser.firstName
+                            tr
+                                th Lastname:
+                                td= keycloakUser.lastName
+                            tr
+                                th Email:
+                                td= keycloakUser.email
+                else
+                    div Not found
+            div
+                form(action='/user/changeusername', method='post')
+                    input(type='hidden' name='userId' value=userId)
+                    input(type='hidden' name='username' value=username)
+                    br
+                    div
+                        input(type='checkbox' name='changeUsername' checked)
+                        label Change only rocket.chat name
+                    br
+                    div If set only the name of the rocket.chat user entry will be changed. The username will stay the same on all services (keycloak, rocket.chat, database)
+                    br
+                    div
+                        button(type='submit' name='confirm') Update user
+        else
+            div
+                form(action='/user/changeusername', method='post')
+                    div
+                        label User ID:
+                        br
+                        input(type='text' name='userId' value=userId)
+                    div
+                        label New Username:
+                        br
+                        input(type='text' name='username' value=username)
+
+                    div
+                        button(type='submit') Load user

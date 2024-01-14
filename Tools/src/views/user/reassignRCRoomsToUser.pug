@@ -1,0 +1,51 @@
+html
+    head
+        title= title
+        style
+            include style.css
+        script
+            include reassignRCRoomsToUser.js
+    body
+        include includes/head.pug
+        h2= title
+        if error
+            div(class="notification notification--error")= error
+        if success
+            if dryRun
+                div(class="notification notification--success") This was only a dry run and nothing was changed!
+            else
+                div(class="notification notification--success") User successfully updated!
+
+            each msg in success
+                if dryRun
+                    div(class="notification notification--info")= msg
+                else
+                    div(class="notification notification--success")= msg
+
+            if dryRun
+                div(class="notification notification--info") You could now run the script by forcing the changes
+                div
+                    form(action='/user/reassignrcroomstouser', method='post')
+                        input(type='hidden' name='userId' value=userId)
+                        div
+                            input(type='checkbox' name='dryrun' checked)
+                            label Dry run
+                        div
+                            button(type='submit', id='submit-button') Reassign rooms
+            else
+                div
+                    a(class='button' href='/user/reassignrcroomstouser') Change another user
+        else
+            div
+                form(action='/user/reassignrcroomstouser', method='post')
+                    div
+                        label User ID:
+                        br
+                        input(type='text' name='userId' value=userId)
+                    div
+                        input(type='checkbox' name='dryrun' checked)
+                        label Dry run
+
+                    div(class="notification notification--error") If you click on the "Reassign rooms" button it could take a while to finish! Just wait until you get redirected!
+                    div
+                        button(type='submit', id='submit-button') Reassign rooms

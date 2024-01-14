@@ -1,21 +1,19 @@
 import AbstractTool, {PugTemplate} from "./AbstractTool.js";
 
-class Inxmail extends AbstractTool {
+class User extends AbstractTool {
   constructor() {
     super('GET');
-
-    this.deps = ['inxmail'];
   }
 
   async run(params: any): Promise<PugTemplate> {
     return {
       type: 'pug',
-      template: 'inxmail/Inxmail',
+      template: 'user/user',
       payload: {
-        title: 'Inxmail',
+        title: 'User',
       }
     };
   }
 }
 
-export default Inxmail;
+export default User;
