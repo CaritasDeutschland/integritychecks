@@ -27,6 +27,8 @@ export let mysqlConn: Connection;
 export let mongoClient: MongoClient;
 export let database: Db;
 
+const SERVER_TIMEOUT_IN_MINUTES = 30;
+
 export const mysqlFn = async<T>(fn: 'query' | 'end' | 'connect', ...args: [any?]): Promise<T> => {
     return await new Promise((resolve, reject) => {
         const fnArgs: any[] = [
@@ -280,7 +282,7 @@ app.get('*', (req, res) => {
     const server = app.listen(config.port, () => {
         console.log(`Tools listening on port ${config.port}`)
     });
-    server.setTimeout(10 * 60 * 1000);
+    server.setTimeout(SERVER_TIMEOUT_IN_MINUTES * 60 * 1000);
 })();
 
 process.on('unhandledRejection', (err) => {

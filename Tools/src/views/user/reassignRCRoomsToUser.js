@@ -1,8 +1,11 @@
-function disableOnClick() {
-    document.getElementById('submit-button').setAttribute('disabled', true);
+function disableButtonOnSubmit() {
+    const button = document.getElementById('submit-button');
+    if (button) {
+        button.setAttribute('disabled', true);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    console.log(document.getElementById('submit-button'));
-    document.getElementById('submit-button').addEventListener('click', disableOnClick);
+    const form = document.getElementById("form");
+    form.addEventListener("submit", disableButtonOnSubmit);
 }, false);

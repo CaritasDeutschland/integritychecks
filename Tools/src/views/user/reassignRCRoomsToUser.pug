@@ -25,7 +25,7 @@ html
             if dryRun
                 div(class="notification notification--info") You could now run the script by forcing the changes
                 div
-                    form(action='/user/reassignrcroomstouser', method='post')
+                    form(action='/user/reassignrcroomstouser', method='post', id='form')
                         input(type='hidden' name='userId' value=userId)
                         div
                             input(type='checkbox' name='dryrun' checked)
@@ -37,7 +37,7 @@ html
                     a(class='button' href='/user/reassignrcroomstouser') Change another user
         else
             div
-                form(action='/user/reassignrcroomstouser', method='post')
+                form(action='/user/reassignrcroomstouser', method='post', id='form')
                     div
                         label User ID:
                         br
