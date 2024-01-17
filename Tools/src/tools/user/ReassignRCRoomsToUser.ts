@@ -204,6 +204,9 @@ class ReassignRCRoomsToUser extends AbstractTool {
           counts.feedback[fRes]++;
         }
       } catch (e) {
+        if (e instanceof AxiosError) {
+          await logger.error(`Rocket.chat error for consultant "${consultant.rc_user_id}".`, JSON.stringify(e.response?.data || "{}"));
+        }
         // Remove technical user from room
         await rocketChatService.post('groups.leave', { roomId: agencySession.rc_group_id });
         throw e;
