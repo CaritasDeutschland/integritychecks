@@ -2,7 +2,7 @@ import AbstractTool, {Methods, PugTemplate} from "../AbstractTool.js";
 import {mysqlFn} from "../../index.js";
 import rocketChatService from "../../helper/rocketChatService.js";
 import ToolsError from "../../helper/ToolsError.js";
-import {AxiosError} from "axios";
+import { AxiosError } from "axios";
 import logger from "../../helper/logger.js";
 
 type Counts = {
@@ -101,6 +101,7 @@ class ReassignRCRoomsToUser extends AbstractTool {
           await logger.error(`Room "${roomId}" of consultant "${consultant.rc_user_id}" not found in rocket.chat.`);
           return 'skipped' as T;
         }
+        await logger.error(`Error assigning technical user to "${roomId}" of consultant "${consultant.rc_user_id}".`, JSON.stringify(e.response?.data || "{}"));
       }
       throw e;
     }
