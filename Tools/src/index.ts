@@ -172,15 +172,27 @@ const teardown = async (deps: Deps[]) => {
 
     if (deps.includes('mysql')) {
         clearInterval(mysqlKeepAliveInterval);
-        await mysqlFn('end');
+        try {
+            await mysqlFn('end');
+        } catch (e: unknown) {
+            await logger.error("MySQL teardown failed", e);
+        }
     }
 
     if (deps.includes('mongo')) {
-        await mongoClient.close();
+        try {
+            await mongoClient.close();
+        } catch (e: unknown) {
+            await logger.error("MongoDB teardown failed", e);
+        }
     }
 
     if (deps.includes('rocketchat')) {
-        await rocketChatService.logout();
+        try {
+            await rocketChatService.logout();
+        } catch (e: unknown) {
+            await logger.error("RocketChat teardown failed", e);
+        }
     }
 
     await logger.info("Done!");
@@ -261,7 +273,11 @@ for (const i in orderedTools) {
                 res.send('OK');
             }
         } catch (e: any) {
-            await teardown(tool.getDeps());
+            try {
+                await teardown(tool.getDeps());
+            } catch (teardownError: unknown) {
+                await logger.error("Teardown failed after tool error", teardownError);
+            }
             res.status(400).send(e);
         }
     });
