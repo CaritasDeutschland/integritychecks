@@ -18,6 +18,18 @@ type Counts = {
   }
 };
 
+type AgencyResult = {
+  agencyId: number,
+  isTeamAgency: boolean,
+  sessionCount: number,
+  counts: Counts,
+};
+
+const emptyCounts = (): Counts => ({
+  session: { added: 0, already: 0, skipped: 0 },
+  feedback: { added: 0, already: 0, skipped: 0 },
+});
+
 class ReassignRCRoomsToUser extends AbstractTool {
   constructor() {
     super(['GET', 'POST'], undefined, [
@@ -34,12 +46,33 @@ class ReassignRCRoomsToUser extends AbstractTool {
 
     if (method === "POST") {
       try {
-        const counts = await this.post(body.userId, body.dryrun !== 'on');
+        const results = await this.post(body.userId, body.dryrun !== 'on');
+
+        const totals = emptyCounts();
+        const messages: string[] = [];
+
+        for (const result of results) {
+          for (const kind of ['session', 'feedback'] as (keyof Counts)[]) {
+            totals[kind].added += result.counts[kind].added;
+            totals[kind].already += result.counts[kind].already;
+            totals[kind].skipped += result.counts[kind].skipped;
+          }
+
+          messages.push(
+            `Agency ${result.agencyId}${result.isTeamAgency ? ' (team)' : ''} — ${result.sessionCount} session(s):`,
+            `→ Sessions: ${result.counts.session.added} added / ${result.counts.session.already} already / ${result.counts.session.skipped} skipped`,
+            `→ Feedback: ${result.counts.feedback.added} added / ${result.counts.feedback.already} already / ${result.counts.feedback.skipped} skipped`,
+          );
+        }
+
+        messages.push(
+          `Total over ${results.length} agenc${results.length === 1 ? 'y' : 'ies'} — ` +
+          `Sessions: ${totals.session.added} added / ${totals.session.already} already / ${totals.session.skipped} skipped; ` +
+          `Feedback: ${totals.feedback.added} added / ${totals.feedback.already} already / ${totals.feedback.skipped} skipped`,
+        );
+
         payload = {
-          success: [
-            `Sessions update: ${counts.session.added} added / ${counts.session.already} already / ${counts.session.skipped} skipped`,
-            `Sessions update: ${counts.feedback.added} added / ${counts.feedback.already} already / ${counts.feedback.skipped} skipped`,
-          ],
+          success: messages,
         };
       } catch (e) {
         payload = {
@@ -129,20 +162,7 @@ class ReassignRCRoomsToUser extends AbstractTool {
     return 'added' as T;
   }
 
-  async post(userId: string, force: boolean = false): Promise<Counts> {
-    const counts = {
-      session: {
-        added: 0,
-        already: 0,
-        skipped: 0,
-      },
-      feedback: {
-        added: 0,
-        already: 0,
-        skipped: 0,
-      }
-    };
-
+  async post(userId: string, force: boolean = false): Promise<AgencyResult[]> {
     const consultants = await mysqlFn<any>(
       'query',
       `SELECT * FROM userservice.consultant WHERE consultant_id = "${userId}"`
@@ -156,9 +176,13 @@ class ReassignRCRoomsToUser extends AbstractTool {
 
     const consultant = consultants[0];
 
+    if (!consultant.rc_user_id) {
+      throw new ToolsError(`Consultant "${userId}" has no rc_user_id in mariadb.`);
+    }
+
     const consultantAgencies = await mysqlFn<any>(
       'query',
-      `SELECT * FROM userservice.consultant_agency 
+      `SELECT * FROM userservice.consultant_agency
                 WHERE consultant_id = "${consultant.consultant_id}"
                 AND delete_date IS NULL
                 `
@@ -166,13 +190,30 @@ class ReassignRCRoomsToUser extends AbstractTool {
 
     if (consultantAgencies.length === 0) {
       throw new ToolsError(`No consultant agency found for consultant "${userId}".`);
-    } else if (consultantAgencies.length > 1) {
-      throw new ToolsError(`Multiple consultant agencies currently not supported!`);
     }
 
-    const consultantAgency = consultantAgencies[0];
+    await logger.info(
+      `Consultant "${userId}" is assigned to ${consultantAgencies.length} agenc${consultantAgencies.length === 1 ? 'y' : 'ies'}: ` +
+      `${consultantAgencies.map((ca: any) => ca.agency_id).join(', ')}.`
+    );
 
-    const agencyData = await this.loadAgencyData(consultantAgency.agency_id);
+    // Process every active agency the consultant belongs to.
+    const results: AgencyResult[] = [];
+    for (const consultantAgency of consultantAgencies) {
+      results.push(await this.processAgency(consultantAgency.agency_id, userId, consultant, force));
+    }
+
+    const totalSessions = results.reduce((sum, result) => sum + result.sessionCount, 0);
+    if (totalSessions === 0) {
+      throw new ToolsError(`No sessions found for any agency of consultant "${userId}".`);
+    }
+
+    return results;
+  }
+
+  async processAgency(agencyId: number, userId: string, consultant: any, force: boolean = false): Promise<AgencyResult> {
+    const agencyData = await this.loadAgencyData(agencyId);
+    const counts = emptyCounts();
 
     let agencySessions = [];
     if (agencyData.agency.is_team_agency) {
@@ -185,16 +226,33 @@ class ReassignRCRoomsToUser extends AbstractTool {
       agencySessions = await mysqlFn<any>(
         'query',
         `SELECT s.* FROM userservice.session s
-                    WHERE (s.consultant_id IS NULL AND s.status = 1 AND s.agency_id = "${agencyData.agency.id}") 
+                    WHERE (s.consultant_id IS NULL AND s.status = 1 AND s.agency_id = "${agencyData.agency.id}")
                     OR s.consultant_id = "${userId}" AND s.agency_id = "${agencyData.agency.id}"`
       );
     }
 
     if (agencySessions.length === 0) {
-      throw new ToolsError(`No sessions found for agency "${agencyData.agency.id}".`);
+      // With multiple agencies an empty agency is not fatal; skip it and let
+      // the caller decide whether *all* agencies were empty.
+      await logger.info(`No sessions found for agency "${agencyData.agency.id}". Skipping.`);
+      return {
+        agencyId: agencyData.agency.id,
+        isTeamAgency: !!agencyData.agency.is_team_agency,
+        sessionCount: 0,
+        counts,
+      };
     }
 
     for (const agencySession of agencySessions) {
+      // A session without an rc_group_id has no Rocket.Chat room to reassign
+      // (e.g. a NEW enquiry not yet picked up). Inviting into a null room makes
+      // rocket.chat reject the request with 400 (error-room-param-not-provided)
+      // and aborts the whole run, so skip it like an empty agency.
+      if (!agencySession.rc_group_id) {
+        await logger.info(`Session "${agencySession.id}" has no rc_group_id (no Rocket.Chat room). Skipping.`);
+        counts.session.skipped++;
+        continue;
+      }
       try {
         const sRes = await this.assignRoom<keyof Counts['session']>(agencySession.rc_group_id, agencySession.id, consultant, force);
         counts.session[sRes]++;
@@ -213,7 +271,12 @@ class ReassignRCRoomsToUser extends AbstractTool {
       }
     }
 
-    return counts;
+    return {
+      agencyId: agencyData.agency.id,
+      isTeamAgency: !!agencyData.agency.is_team_agency,
+      sessionCount: agencySessions.length,
+      counts,
+    };
   }
 }
 
